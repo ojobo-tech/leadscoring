@@ -97,3 +97,15 @@ The first version of the product will focus on lead scoring only. It will includ
 ## Success Criteria
 
 The project is successful if it can rank leads by likelihood to convert, explain why each lead received its score, present the results clearly, and support a realistic SMB sales workflow.
+
+## Business Impact
+
+Overall, this solution means the company can turn scattered data into repeatable business decisions.
+
+The real impact is usually:
+- more revenue because sales teams focus on the best leads first,
+- less wasted time because low-value leads or risky customers are flagged early,
+- better forecasting because the company can see patterns before they become problems,
+- more consistent decisions because the team is using the same scoring logic instead of guesswork,
+- better visibility because managers can see what is happening across leads, accounts, and activity,
+- scalability because the same platform can later support churn, purchase likelihood, and demand forecasting.
