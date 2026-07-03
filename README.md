@@ -82,13 +82,17 @@ AI Lead Scoring Decision-Support Platform
 
 SMB sales teams often waste time on low-quality leads and miss the best opportunities because lead prioritization is manual and inconsistent.
 
+## Data
+
+This is an open source data, it is synthetic and redistributable
+
 ## Target User
 
 SMB sales representatives, sales managers, and business owners who need to prioritize leads more effectively.
 
 ## Scope
 
-The first version of the product will focus on lead scoring only. It will include data ingestion, data cleaning, predictive modeling, explainability, and a simple dashboard or decision workspace.
+The first version of the product will focus on lead scoring only. It will include data ingestion, data cleaning, predictive modeling, explainability, and a simple dashboard or decision workspace. The product supports a modular ingestion framework: is designed for multiple ingestion methods.
 
 ## Success Criteria
 
