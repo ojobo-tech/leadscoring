@@ -109,3 +109,5 @@ The real impact is usually:
 - more consistent decisions because the team is using the same scoring logic instead of guesswork,
 - better visibility because managers can see what is happening across leads, accounts, and activity,
 - scalability because the same platform can later support churn, purchase likelihood, and demand forecasting.
+
+In practical terms, the company should expect impact like higher conversion rates, shorter sales cycles, improved team productivity, and better use of business data.
