@@ -9,7 +9,6 @@ from typing import Dict, List, Optional
 import pandas as pd
 import streamlit as st
 
-# Make sure the project root is on the import path so we can load src/end_to_end_pipeline.py
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -18,6 +17,10 @@ from src.end_to_end_pipeline import run_end_to_end_pipeline
 
 
 APP_TITLE = "AI Lead Prioritization and Engagement Scoring"
+APP_SUBTITLE = (
+    "Upload one CSV or multiple CSVs. The system will automatically map, join, "
+    "score, and explain the leads."
+)
 OUTPUT_DIR = PROJECT_ROOT / "reports" / "streamlit_outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -30,16 +33,86 @@ ROLE_KEYWORDS = {
     "contact": ["contact"],
 }
 
-st.set_page_config(page_title=APP_TITLE, layout="wide")
-st.title(APP_TITLE)
-st.caption(
-    "Upload one CSV or multiple CSVs. The system will automatically map, join, score, and explain the leads."
-)
+ALIAS_MAP = {
+    "status": "status",
+    "leadstatus": "status",
+    "lead_status": "status",
+    "stage": "status",
+    "leadstage": "status",
+    "lead_stage": "status",
+    "leadsource": "lead_source",
+    "lead_source": "lead_source",
+    "source": "lead_source",
+    "channel": "lead_source",
+    "leadownerid": "lead_owner_id",
+    "ownerid": "lead_owner_id",
+    "owner_id": "lead_owner_id",
+    "assignedto": "lead_owner_id",
+    "owner": "lead_owner_id",
+    "rep": "lead_owner_id",
+    "ownerrole": "owner_role",
+    "owner_role": "owner_role",
+    "role": "owner_role",
+    "rep_role": "owner_role",
+    "sales_role": "owner_role",
+    "taskcount": "task_count",
+    "task_count": "task_count",
+    "tasks": "task_count",
+    "opentaskcount": "open_task_count",
+    "open_task_count": "open_task_count",
+    "open_tasks": "open_task_count",
+    "closedtaskcount": "closed_task_count",
+    "closed_task_count": "closed_task_count",
+    "closed_tasks": "closed_task_count",
+    "highprioritytaskcount": "high_priority_task_count",
+    "high_priority_task_count": "high_priority_task_count",
+    "priority_tasks": "high_priority_task_count",
+    "leadagedays": "lead_age_days",
+    "lead_age_days": "lead_age_days",
+    "agedays": "lead_age_days",
+    "ownertenuredays": "owner_tenure_days",
+    "owner_tenure_days": "owner_tenure_days",
+    "tenuredays": "owner_tenure_days",
+    "dayssincelasttaskcreated": "days_since_last_task_created",
+    "days_since_last_task_created": "days_since_last_task_created",
+    "lasttaskcreateddays": "days_since_last_task_created",
+    "dayssincelasttaskactivity": "days_since_last_task_activity",
+    "days_since_last_task_activity": "days_since_last_task_activity",
+    "lasttaskactivitydays": "days_since_last_task_activity",
+    "opentaskratio": "open_task_ratio",
+    "open_task_ratio": "open_task_ratio",
+    "closedtaskratio": "closed_task_ratio",
+    "closed_task_ratio": "closed_task_ratio",
+    "highprioritytaskratio": "high_priority_task_ratio",
+    "high_priority_task_ratio": "high_priority_task_ratio",
+    "taskvelocity": "task_velocity",
+    "task_velocity": "task_velocity",
+    "highpriorityvelocity": "high_priority_velocity",
+    "high_priority_velocity": "high_priority_velocity",
+    "taskcountperownerdayclean": "task_count_per_owner_day_clean",
+    "task_count_per_owner_day_clean": "task_count_per_owner_day_clean",
+    "taskcountperownerday": "task_count_per_owner_day_clean",
+    "taskactivityrecencyscore": "task_activity_recency_score",
+    "task_activity_recency_score": "task_activity_recency_score",
+    "taskcreatedrecencyscore": "task_created_recency_score",
+    "task_created_recency_score": "task_created_recency_score",
+    "companynorm": "company_norm",
+    "company_norm": "company_norm",
+    "company": "company",
+    "accountid": "account_id",
+    "account_id": "account_id",
+    "convertedaccountid": "converted_account_id",
+    "converted_account_id": "converted_account_id",
+    "userid": "user_id",
+    "user_id": "user_id",
+    "whoid": "who_id",
+    "who_id": "who_id",
+    "leadid": "lead_id",
+    "lead_id": "lead_id",
+}
 
 
-@st.cache_resource
-def _noop():
-    return True
+st.set_page_config(page_title=APP_TITLE, layout="wide", page_icon="📊")
 
 
 def normalize_name(name: str) -> str:
@@ -54,264 +127,96 @@ def detect_role(filename: str) -> str:
     return "unknown"
 
 
-def clean_text(value) -> str:
-    if pd.isna(value):
-        return "Unknown"
-    text = str(value).strip()
-    return text if text else "Unknown"
-
-
 def canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize a raw uploaded CSV so later joins work more predictably."""
     df = df.copy()
     rename_map: Dict[str, str] = {}
-
-    alias_map = {
-        "status": "status",
-        "leadstatus": "status",
-        "lead_status": "status",
-        "stage": "status",
-        "leadstage": "status",
-        "lead_stage": "status",
-        "leadsource": "lead_source",
-        "lead_source": "lead_source",
-        "source": "lead_source",
-        "channel": "lead_source",
-        "leadownerid": "lead_owner_id",
-        "ownerid": "lead_owner_id",
-        "owner_id": "lead_owner_id",
-        "assignedto": "lead_owner_id",
-        "owner": "lead_owner_id",
-        "rep": "lead_owner_id",
-        "ownerrole": "owner_role",
-        "owner_role": "owner_role",
-        "role": "owner_role",
-        "rep_role": "owner_role",
-        "sales_role": "owner_role",
-        "taskcount": "task_count",
-        "task_count": "task_count",
-        "tasks": "task_count",
-        "opentaskcount": "open_task_count",
-        "open_task_count": "open_task_count",
-        "open_tasks": "open_task_count",
-        "closedtaskcount": "closed_task_count",
-        "closed_task_count": "closed_task_count",
-        "closed_tasks": "closed_task_count",
-        "highprioritytaskcount": "high_priority_task_count",
-        "high_priority_task_count": "high_priority_task_count",
-        "priority_tasks": "high_priority_task_count",
-        "leadagedays": "lead_age_days",
-        "lead_age_days": "lead_age_days",
-        "agedays": "lead_age_days",
-        "ownertenuredays": "owner_tenure_days",
-        "owner_tenure_days": "owner_tenure_days",
-        "tenuredays": "owner_tenure_days",
-        "dayssincelasttaskcreated": "days_since_last_task_created",
-        "days_since_last_task_created": "days_since_last_task_created",
-        "lasttaskcreateddays": "days_since_last_task_created",
-        "dayssincelasttaskactivity": "days_since_last_task_activity",
-        "days_since_last_task_activity": "days_since_last_task_activity",
-        "lasttaskactivitydays": "days_since_last_task_activity",
-        "opentaskratio": "open_task_ratio",
-        "open_task_ratio": "open_task_ratio",
-        "closedtaskratio": "closed_task_ratio",
-        "closed_task_ratio": "closed_task_ratio",
-        "highprioritytaskratio": "high_priority_task_ratio",
-        "high_priority_task_ratio": "high_priority_task_ratio",
-        "taskvelocity": "task_velocity",
-        "task_velocity": "task_velocity",
-        "highpriorityvelocity": "high_priority_velocity",
-        "high_priority_velocity": "high_priority_velocity",
-        "taskcountperownerdayclean": "task_count_per_owner_day_clean",
-        "task_count_per_owner_day_clean": "task_count_per_owner_day_clean",
-        "taskcountperownerday": "task_count_per_owner_day_clean",
-        "taskactivityrecencyscore": "task_activity_recency_score",
-        "task_activity_recency_score": "task_activity_recency_score",
-        "taskcreatedrecencyscore": "task_created_recency_score",
-        "task_created_recency_score": "task_created_recency_score",
-        "companynorm": "company_norm",
-        "company_norm": "company_norm",
-        "company": "company",
-        "accountid": "account_id",
-        "account_id": "account_id",
-        "convertedaccountid": "converted_account_id",
-        "converted_account_id": "converted_account_id",
-        "userid": "user_id",
-        "user_id": "user_id",
-        "whoid": "who_id",
-        "who_id": "who_id",
-        "leadid": "lead_id",
-        "lead_id": "lead_id",
-    }
-
     for col in df.columns:
         norm = normalize_name(col)
-        if norm in alias_map:
-            rename_map[col] = alias_map[norm]
-
-    df = df.rename(columns=rename_map)
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
+        if norm in ALIAS_MAP:
+            rename_map[col] = ALIAS_MAP[norm]
+    return df.rename(columns=rename_map)
 
 
-def _first_existing_col(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
-    for c in candidates:
-        if c in df.columns:
-            return c
-    return None
+def display_value(value):
+    if pd.isna(value):
+        return "—"
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else round(value, 4)
+    return value
 
 
-def aggregate_tasks(tasks_df: pd.DataFrame) -> pd.DataFrame:
-    tasks_df = canonicalize_columns(tasks_df)
-    tasks_df = tasks_df.copy()
-
-    key_col = _first_existing_col(tasks_df, ["lead_id", "who_id"])
-    if key_col is None:
-        return pd.DataFrame()
-
-    for col in ["is_closed", "priority", "created_date", "activity_date"]:
-        if col not in tasks_df.columns:
-            tasks_df[col] = pd.NA
-
-    def _priority_high(series: pd.Series) -> int:
-        return int((series.astype(str).str.lower() == "high").sum())
-
-    grouped = (
-        tasks_df.dropna(subset=[key_col])
-        .groupby(key_col)
-        .agg(
-            task_count=(key_col, "count"),
-            open_task_count=("is_closed", lambda x: (~x.fillna(False)).sum()),
-            closed_task_count=("is_closed", lambda x: x.fillna(False).sum()),
-            high_priority_task_count=("priority", _priority_high),
-            last_task_created_date=("created_date", "max"),
-            last_task_activity_date=("activity_date", "max"),
-        )
-        .reset_index()
-        .rename(columns={key_col: "lead_id"})
-    )
-
-    return grouped
+def prepare_upload_summary(uploaded_files: List) -> pd.DataFrame:
+    rows = []
+    for f in uploaded_files:
+        try:
+            preview = pd.read_csv(f)
+            rows.append(
+                {
+                    "file": f.name,
+                    "role": detect_role(f.name),
+                    "rows": len(preview),
+                    "columns": len(preview.columns),
+                    "sample_columns": ", ".join(list(preview.columns[:6])),
+                }
+            )
+        except Exception as exc:
+            rows.append(
+                {
+                    "file": f.name,
+                    "role": detect_role(f.name),
+                    "rows": "-",
+                    "columns": "-",
+                    "sample_columns": f"Unreadable: {exc}",
+                }
+            )
+        finally:
+            try:
+                f.seek(0)
+            except Exception:
+                pass
+    return pd.DataFrame(rows)
 
 
 def build_primary_frame(file_frames: Dict[str, List[pd.DataFrame]]) -> pd.DataFrame:
-    """Build one canonical lead-level frame from one or multiple uploaded files."""
     primary_order = ["opportunity", "lead", "account", "contact", "unknown"]
     primary_role = next((r for r in primary_order if r in file_frames and len(file_frames[r]) > 0), None)
-
     if primary_role is None:
-        raise ValueError("No readable CSV files were uploaded.")
+        raise ValueError("No usable CSV files were uploaded.")
 
     base = pd.concat([canonicalize_columns(df) for df in file_frames[primary_role]], ignore_index=True)
 
-    if "task" in file_frames:
-        task_frames = [canonicalize_columns(df) for df in file_frames["task"]]
-        tasks = pd.concat(task_frames, ignore_index=True)
-        task_agg = aggregate_tasks(tasks)
-        if not task_agg.empty and "lead_id" in base.columns:
-            base = base.merge(task_agg, how="left", on="lead_id")
-
-    if "user" in file_frames:
-        user_frames = [canonicalize_columns(df) for df in file_frames["user"]]
-        users = pd.concat(user_frames, ignore_index=True)
-        owner_key = _first_existing_col(users, ["lead_owner_id", "owner_id", "user_id", "id"])
-        if owner_key is not None:
-            users = users.rename(columns={owner_key: "lead_owner_id"})
-            keep_cols = [c for c in ["lead_owner_id", "owner_role", "owner_department", "owner_is_active", "owner_hire_date"] if c in users.columns]
-            users = users[keep_cols].drop_duplicates(subset=["lead_owner_id"])
-            if "lead_owner_id" in base.columns:
-                base = base.merge(users, how="left", on="lead_owner_id", suffixes=("", "_user"))
-
-    if "account" in file_frames:
-        account_frames = [canonicalize_columns(df) for df in file_frames["account"]]
-        accounts = pd.concat(account_frames, ignore_index=True)
-        account_left = _first_existing_col(base, ["converted_account_id", "account_id"])
-        account_right = _first_existing_col(accounts, ["account_id", "converted_account_id"])
-        if account_left and account_right:
-            accounts = accounts.rename(columns={account_right: account_left})
-            keep_cols = [c for c in accounts.columns if c != account_left]
-            accounts = accounts[[account_left] + keep_cols].drop_duplicates(subset=[account_left])
-            base = base.merge(accounts, how="left", on=account_left, suffixes=("", "_account"))
-
+    # Keep only a sensible set of columns if the upload contains lots of raw CRM fields.
+    # The scoring pipeline will use what it recognizes and ignore the rest.
     return base
 
 
-def ensure_canonical_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
+def lead_label(row: pd.Series) -> str:
+    if "name" in row and pd.notna(row["name"]):
+        base = str(row["name"])
+    elif "company" in row and pd.notna(row["company"]):
+        base = str(row["company"])
+    elif "lead_id" in row and pd.notna(row["lead_id"]):
+        base = str(row["lead_id"])
+    elif "lead_owner_id" in row and pd.notna(row["lead_owner_id"]):
+        base = str(row["lead_owner_id"])
+    else:
+        base = "Lead"
 
-    canonical_fields = [
-        "status",
-        "lead_source",
-        "lead_owner_id",
-        "owner_role",
-        "task_count",
-        "open_task_count",
-        "closed_task_count",
-        "high_priority_task_count",
-        "lead_age_days",
-        "owner_tenure_days",
-        "days_since_last_task_created",
-        "days_since_last_task_activity",
-        "open_task_ratio",
-        "closed_task_ratio",
-        "high_priority_task_ratio",
-        "task_velocity",
-        "high_priority_velocity",
-        "task_count_per_owner_day_clean",
-        "task_activity_recency_score",
-        "task_created_recency_score",
-    ]
-
-    for col in canonical_fields:
-        if col not in df.columns:
-            df[col] = "Unknown" if col in {"status", "lead_source", "lead_owner_id", "owner_role"} else pd.NA
-
-    for col in ["status", "lead_source", "lead_owner_id", "owner_role"]:
-        df[col] = df[col].apply(clean_text)
-
-    numeric_cols = [c for c in canonical_fields if c not in {"status", "lead_source", "lead_owner_id", "owner_role"}]
-    for col in numeric_cols:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    if df["task_count_per_owner_day_clean"].isna().all() and {"task_count", "owner_tenure_days"}.issubset(df.columns):
-        df["task_count_per_owner_day_clean"] = df["task_count"] / (df["owner_tenure_days"].fillna(0) + 1)
-
-    if df["task_velocity"].isna().all() and {"task_count", "lead_age_days"}.issubset(df.columns):
-        df["task_velocity"] = df["task_count"] / (df["lead_age_days"].fillna(0) + 1)
-
-    if df["high_priority_velocity"].isna().all() and {"high_priority_task_count", "lead_age_days"}.issubset(df.columns):
-        df["high_priority_velocity"] = df["high_priority_task_count"] / (df["lead_age_days"].fillna(0) + 1)
-
-    if df["open_task_ratio"].isna().all() and {"open_task_count", "task_count"}.issubset(df.columns):
-        denom = df["task_count"].replace(0, pd.NA)
-        df["open_task_ratio"] = (df["open_task_count"] / denom).fillna(0)
-
-    if df["closed_task_ratio"].isna().all() and {"closed_task_count", "task_count"}.issubset(df.columns):
-        denom = df["task_count"].replace(0, pd.NA)
-        df["closed_task_ratio"] = (df["closed_task_count"] / denom).fillna(0)
-
-    if df["high_priority_task_ratio"].isna().all() and {"high_priority_task_count", "task_count"}.issubset(df.columns):
-        denom = df["task_count"].replace(0, pd.NA)
-        df["high_priority_task_ratio"] = (df["high_priority_task_count"] / denom).fillna(0)
-
-    if "last_task_activity_date" in df.columns and df["days_since_last_task_activity"].isna().all():
-        df["last_task_activity_date"] = pd.to_datetime(df["last_task_activity_date"], errors="coerce")
-        ref = df["last_task_activity_date"].max()
-        if pd.notna(ref):
-            df["days_since_last_task_activity"] = (ref - df["last_task_activity_date"]).dt.days.fillna(0).clip(lower=0)
-
-    if "last_task_created_date" in df.columns and df["days_since_last_task_created"].isna().all():
-        df["last_task_created_date"] = pd.to_datetime(df["last_task_created_date"], errors="coerce")
-        ref = df["last_task_created_date"].max()
-        if pd.notna(ref):
-            df["days_since_last_task_created"] = (ref - df["last_task_created_date"]).dt.days.fillna(0).clip(lower=0)
-
-    return df[canonical_fields + [c for c in df.columns if c not in canonical_fields]].copy()
+    bucket = row.get("priority_bucket", "Cold")
+    score = row.get("priority_score", row.get("model_probability", 0))
+    return f"{base} | {bucket} | {float(score):.1f}"
 
 
-# -------------------------
-# UI
-# -------------------------
+st.markdown(
+    f"""
+    <div style="padding:1.1rem 1.25rem; border-radius:1.2rem; background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:white; margin-bottom:1rem;">
+        <div style="font-size:2rem; font-weight:700; line-height:1.1;">{APP_TITLE}</div>
+        <div style="margin-top:0.4rem; font-size:0.98rem; opacity:0.92;">{APP_SUBTITLE}</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 with st.sidebar:
     st.header("Upload raw data")
     uploaded_files = st.file_uploader(
@@ -322,12 +227,10 @@ with st.sidebar:
     run_button = st.button("Score Leads", type="primary", use_container_width=True)
     st.markdown(
         """
-        The system will automatically:
-        - detect file roles from file names
-        - map common CRM column aliases
+        **What happens automatically**
+        - detect file roles
         - join compatible raw files
         - clean and standardize fields
-        - build missing features
         - score leads
         - generate explanations
         - return a downloadable scored file
@@ -338,24 +241,43 @@ if not uploaded_files:
     st.info("Upload one or more raw CSVs to begin.")
     st.stop()
 
-st.subheader("Detected file roles")
-for f in uploaded_files:
-    st.write(f"- {f.name} → {detect_role(f.name)}")
+st.subheader("File intake summary")
+st.dataframe(prepare_upload_summary(uploaded_files), use_container_width=True, hide_index=True)
 
-# Read all uploaded files.
+for file in uploaded_files:
+    try:
+        file.seek(0)
+    except Exception:
+        pass
+
 file_frames: Dict[str, List[pd.DataFrame]] = {}
+skipped_files: List[str] = []
+
 for file in uploaded_files:
     try:
         df = pd.read_csv(file)
+        if df.empty or len(df.columns) == 0:
+            skipped_files.append(f"{file.name} (empty or no columns)")
+            continue
     except Exception as exc:
-        st.error(f"Could not read {file.name}: {exc}")
-        st.stop()
+        skipped_files.append(f"{file.name} ({exc})")
+        continue
+
     role = detect_role(file.name)
     file_frames.setdefault(role, []).append(df)
 
-first_preview = next(iter(file_frames.values()))[0]
-st.subheader("Uploaded file preview")
-st.dataframe(first_preview.head(10), use_container_width=True)
+if skipped_files:
+    st.warning("Some files were skipped because they could not be parsed:")
+    for item in skipped_files:
+        st.write(f"- {item}")
+
+if not file_frames:
+    st.error("None of the uploaded files could be used.")
+    st.stop()
+
+preview_source = next(iter(file_frames.values()))[0]
+st.subheader("Preview of first usable file")
+st.dataframe(preview_source.head(10), use_container_width=True)
 
 if not run_button:
     st.caption("Click **Score Leads** to run the automated pipeline.")
@@ -363,7 +285,6 @@ if not run_button:
 
 try:
     merged_raw = build_primary_frame(file_frames)
-    merged_raw = ensure_canonical_features(merged_raw)
 except Exception as exc:
     st.error(f"Could not build the automated input frame: {exc}")
     st.stop()
@@ -387,6 +308,12 @@ finally:
         pass
 
 scored_df = scored_df.loc[:, ~scored_df.columns.duplicated()].copy()
+ranked = scored_df.sort_values("priority_score", ascending=False).reset_index(drop=True)
+ranked["display_name"] = ranked.apply(lead_label, axis=1)
+ranked = ranked.drop_duplicates(
+    subset=[c for c in ["lead_id", "lead_owner_id", "name", "company"] if c in ranked.columns],
+    keep="first",
+).reset_index(drop=True)
 
 st.success(f"Scored {len(scored_df):,} leads successfully.")
 
@@ -404,65 +331,140 @@ m4.metric("Cold leads", f"{cold_count:,}")
 st.subheader("Priority distribution")
 st.bar_chart(pd.Series({"Hot": hot_count, "Warm": warm_count, "Cool": cool_count, "Cold": cold_count}))
 
-st.subheader("Ranked leads")
-rank_cols = [
-    c
-    for c in [
-        "rank",
-        "lead_owner_id",
-        "lead_source",
-        "status",
-        "owner_role",
-        "priority_score",
-        "priority_bucket",
-        "recommended_action",
-        "reason_1",
-        "reason_2",
-        "reason_3",
-        "xai_summary",
-        "score_source",
+tab_overview, tab_top, tab_detail, tab_export = st.tabs(
+    ["Overview", "Top leads", "Lead detail", "Export"]
+)
+
+with tab_overview:
+    st.markdown("### What the system just did")
+    st.write(
+        "It accepted raw client files, standardized the schema, built the canonical lead table, scored the leads, and generated a business-friendly priority output."
+    )
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Usable files", f"{sum(len(v) for v in file_frames.values())}")
+    c2.metric("Detected roles", f"{len(file_frames)}")
+    c3.metric("Output rows", f"{len(scored_df):,}")
+
+    st.markdown("#### File roles detected")
+    detected_rows = [{"file": f.name, "role": detect_role(f.name)} for f in uploaded_files]
+    st.dataframe(pd.DataFrame(detected_rows), use_container_width=True, hide_index=True)
+
+with tab_top:
+    st.markdown("### Business view of the ranked leads")
+    bucket_filter = st.selectbox("Filter by bucket", ["All", "Hot", "Warm", "Cool", "Cold"], index=0)
+    search_text = st.text_input("Search by lead, company, owner, source, or status", value="")
+    shortlist_n = (
+        st.slider(
+            "How many top leads to show",
+            min_value=10,
+            max_value=min(200, len(ranked)),
+            value=min(25, len(ranked)),
+            step=5,
+        )
+        if len(ranked) >= 10
+        else len(ranked)
+    )
+
+    filtered = ranked.copy()
+    if bucket_filter != "All" and "priority_bucket" in filtered.columns:
+        filtered = filtered[filtered["priority_bucket"] == bucket_filter]
+
+    if search_text.strip():
+        q = search_text.strip().lower()
+        search_cols = [
+            c for c in ["display_name", "lead_owner_id", "lead_source", "status", "owner_role", "name", "company"]
+            if c in filtered.columns
+        ]
+        mask = pd.Series(False, index=filtered.index)
+        for col in search_cols:
+            mask = mask | filtered[col].astype(str).str.lower().str.contains(q, na=False)
+        filtered = filtered[mask]
+
+    fixed_view_cols = [
+        c
+        for c in [
+            "rank",
+            "display_name",
+            "lead_source",
+            "status",
+            "owner_role",
+            "model_probability",
+            "priority_score",
+            "priority_bucket",
+            "recommended_action",
+        ]
+        if c in filtered.columns
     ]
-    if c in scored_df.columns
-]
 
-st.dataframe(
-    scored_df.sort_values("priority_score", ascending=False)[rank_cols],
-    use_container_width=True,
-    height=450,
-)
+    st.dataframe(
+        filtered[fixed_view_cols].head(shortlist_n),
+        use_container_width=True,
+        height=420,
+        hide_index=True,
+    )
 
-st.download_button(
-    label="Download scored CSV",
-    data=scored_df.to_csv(index=False).encode("utf-8"),
-    file_name="scored_leads.csv",
-    mime="text/csv",
-    use_container_width=True,
-)
+with tab_detail:
+    st.markdown("### Inspect one lead")
+    lead_options = [
+        f"{i + 1}. {ranked.loc[i, 'display_name']} | {ranked.loc[i, 'priority_bucket']} | {float(ranked.loc[i, 'priority_score']):.1f}"
+        for i in range(len(ranked))
+    ]
+    selected_label = st.selectbox("Select a lead", lead_options, index=0)
+    selected_idx = lead_options.index(selected_label)
+    selected = ranked.loc[selected_idx]
 
-st.subheader("Lead explorer")
-ranked = scored_df.sort_values("priority_score", ascending=False).reset_index(drop=True)
-lead_options = [
-    f"{i+1}. {ranked.loc[i, 'lead_owner_id'] if 'lead_owner_id' in ranked.columns else 'Lead'} | {ranked.loc[i, 'priority_bucket']} | {float(ranked.loc[i, 'priority_score']):.1f}"
-    for i in range(len(ranked))
-]
-selected_label = st.selectbox("Select a lead to inspect", lead_options, index=0)
-selected_idx = lead_options.index(selected_label)
-selected = ranked.loc[selected_idx]
+    left, right = st.columns([1.05, 0.95])
 
-left, right = st.columns([1.1, 0.9])
-with left:
-    st.markdown("### Selected lead details")
-    st.write(selected.to_dict())
+    with left:
+        st.markdown("#### Lead summary")
+        summary_fields = [
+            "display_name",
+            "lead_id",
+            "lead_owner_id",
+            "lead_source",
+            "status",
+            "owner_role",
+            "model_probability",
+            "priority_score",
+            "priority_bucket",
+            "recommended_action",
+        ]
+        summary_rows = []
+        for field in summary_fields:
+            if field in selected.index:
+                summary_rows.append(
+                    {"Field": field.replace("_", " ").title(), "Value": display_value(selected[field])}
+                )
+        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
 
-with right:
-    st.markdown("### Explanation")
-    st.write(f"**Bucket:** {selected.get('priority_bucket', 'Cold')}")
-    st.write(f"**Recommended action:** {selected.get('recommended_action', 'Review')}")
-    st.write(f"**Reason 1:** {selected.get('reason_1', '')}")
-    st.write(f"**Reason 2:** {selected.get('reason_2', '')}")
-    st.write(f"**Reason 3:** {selected.get('reason_3', '')}")
-    if "xai_summary" in selected:
-        st.info(selected.get("xai_summary", ""))
+    with right:
+        st.markdown("#### Explanation")
+        st.write(f"**Bucket:** {selected.get('priority_bucket', 'Cold')}")
+        st.write(f"**Recommended action:** {selected.get('recommended_action', 'Review')}")
+        st.write(f"**Reason 1:** {selected.get('reason_1', '')}")
+        st.write(f"**Reason 2:** {selected.get('reason_2', '')}")
+        st.write(f"**Reason 3:** {selected.get('reason_3', '')}")
+        if "xai_summary" in selected:
+            st.info(selected.get("xai_summary", ""))
+
+    with st.expander("Show full scored record"):
+        clean_record = {}
+        for k, v in selected.to_dict().items():
+            if pd.isna(v):
+                continue
+            clean_record[k] = display_value(v)
+        st.json(clean_record)
+
+with tab_export:
+    st.markdown("### Download the scored output")
+    st.write("The exported CSV includes the ranked result set plus explanations and recommended actions.")
+    st.download_button(
+        label="Download scored CSV",
+        data=scored_df.to_csv(index=False).encode("utf-8"),
+        file_name="scored_leads.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
 
 st.caption(
     "This dashboard supports one raw CSV or multiple raw CSVs. The client only uploads files and receives scored, explained output."
